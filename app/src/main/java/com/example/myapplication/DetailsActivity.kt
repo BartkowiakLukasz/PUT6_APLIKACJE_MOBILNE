@@ -1,0 +1,65 @@
+package com.example.myapplication
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.example.myapplication.ui.theme.MyApplicationTheme
+
+class DetailsActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+
+        val route = intent.getSerializableExtra("ROUTE_DATA") as? Route
+
+        setContent {
+            MyApplicationTheme {
+                Scaffold(modifier = Modifier.fillMaxSize(),
+                    topBar = {
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    TopAppBar(
+                        title = { Text("Szczegóły trasy") },
+                        navigationIcon = {
+                            IconButton(onClick = { finish() }) {
+                                Icon(
+                                    imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Wróć"
+                                )
+                            }
+                        }
+                    )
+                })
+                { innerPadding ->
+                    if (route != null) {
+                        RouteDetailsScreen(route = route, modifier = Modifier.padding(innerPadding))
+                    } else {
+                        Text("Błąd: Nie udało się załadować trasy", modifier = Modifier.padding(innerPadding))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RouteDetailsScreen(route: Route, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.padding(24.dp)) {
+        Text(text = route.name, style = MaterialTheme.typography.headlineLarge)
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(text = "Typ: ${route.type}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(text = "Opis trasy:", style = MaterialTheme.typography.titleMedium)
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(text = route.description, style = MaterialTheme.typography.bodyLarge)
+    }
+}

@@ -1,5 +1,6 @@
 package com.example.myapplication
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,6 +18,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.ui.theme.MyApplicationTheme
@@ -47,6 +49,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RouteList(routes: List<Route>, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+
     LazyColumn(modifier = modifier.fillMaxSize()) {
         items(routes) { route ->
             Card(
@@ -54,6 +58,9 @@ fun RouteList(routes: List<Route>, modifier: Modifier = Modifier) {
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .clickable {
+                        val intent = Intent(context, DetailsActivity::class.java)
+                        intent.putExtra("ROUTE_DATA", route)
+                        context.startActivity(intent)
                     }
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
