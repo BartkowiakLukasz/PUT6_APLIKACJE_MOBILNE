@@ -21,45 +21,29 @@ class DetailsActivity : ComponentActivity() {
 
         setContent {
             MyApplicationTheme {
-                Scaffold(modifier = Modifier.fillMaxSize(),
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
                     topBar = {
-                    @OptIn(ExperimentalMaterial3Api::class)
-                    TopAppBar(
-                        title = { Text("Szczegóły trasy") },
-                        navigationIcon = {
-                            IconButton(onClick = { finish() }) {
-                                Icon(
-                                    imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Wróć"
-                                )
+                        @OptIn(ExperimentalMaterial3Api::class)
+                        TopAppBar(
+                            title = { Text("Szczegóły trasy") },
+                            navigationIcon = {
+                                IconButton(onClick = { finish() }) {
+                                    Icon(
+                                        imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Wróć"
+                                    )
+                                }
                             }
-                        }
-                    )
-                })
+                        )
+                    })
                 { innerPadding ->
-                    if (route != null) {
-                        RouteDetailsScreen(route = route, modifier = Modifier.padding(innerPadding))
-                    } else {
-                        Text("Błąd: Nie udało się załadować trasy", modifier = Modifier.padding(innerPadding))
-                    }
+                    RouteDetailContent(
+                        route = route,
+                        modifier = Modifier.padding(innerPadding)
+                    )
                 }
             }
         }
-    }
-}
-
-@Composable
-fun RouteDetailsScreen(route: Route, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.padding(24.dp)) {
-        Text(text = route.name, style = MaterialTheme.typography.headlineLarge)
-
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Typ: ${route.type}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-
-        Spacer(modifier = Modifier.height(24.dp))
-        Text(text = "Opis trasy:", style = MaterialTheme.typography.titleMedium)
-
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(text = route.description, style = MaterialTheme.typography.bodyLarge)
     }
 }
