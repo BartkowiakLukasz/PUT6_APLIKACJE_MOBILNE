@@ -12,7 +12,14 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 
 @Composable
-fun RouteDetailContent(route: Route?, modifier: Modifier = Modifier, seconds: Int, onSecondsChange: (Int) -> Unit) {
+fun RouteDetailContent(
+    route: Route?, 
+    modifier: Modifier = Modifier, 
+    seconds: Int, 
+    onSecondsChange: (Int) -> Unit,
+    refreshTrigger: Int = 0,
+    onRecordSaved: () -> Unit = {}
+) {
     if (route == null) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
             Text("Wybierz trasę z listy po lewej", style = MaterialTheme.typography.bodyLarge)
@@ -43,7 +50,9 @@ fun RouteDetailContent(route: Route?, modifier: Modifier = Modifier, seconds: In
             RouteStopwatch(
                 route = route,
                 seconds = seconds,
-                onSecondsChange = onSecondsChange
+                onSecondsChange = onSecondsChange,
+                refreshTrigger = refreshTrigger,
+                onRecordSaved = onRecordSaved
             )
         }
     }

@@ -2,27 +2,48 @@ package com.example.myapplication
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
-fun RouteStopwatch(route: Route?, seconds: Int, onSecondsChange: (Int) -> Unit) {
+fun RouteStopwatch(
+    route: Route?, 
+    seconds: Int, 
+    onSecondsChange: (Int) -> Unit,
+    refreshTrigger: Int = 0,
+    onRecordSaved: () -> Unit = {}
+) {
 
     var isRunning by rememberSaveable { mutableStateOf(false) }
 
-    var savedTimes by rememberSaveable { mutableStateOf(listOf<String>()) }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val dao = remember { AppDatabase.getDatabase(context).routeDao() }
+
+    var savedTimes by remember { mutableStateOf(listOf<RouteRecord>()) }
 
     val latestSeconds by rememberUpdatedState(newValue = seconds)
+
+    // Reagujemy na zmianę trasy LUB na sygnał odświeżenia (refreshTrigger)
+    LaunchedEffect(route?.id, refreshTrigger) {
+        if (route != null) {
+            savedTimes = dao.getRecordsForRoute(route.id)
+        } else {
+            savedTimes = emptyList()
+        }
+    }
 
     LaunchedEffect(isRunning) {
         if (isRunning) {
@@ -73,12 +94,22 @@ fun RouteStopwatch(route: Route?, seconds: Int, onSecondsChange: (Int) -> Unit) 
                 }
 
                 IconButton(onClick = {
-                    val formatter = java.text.SimpleDateFormat("dd-MM-yyyy HH:mm", java.util.Locale.getDefault())
-                    val currentDateTime = formatter.format(java.util.Date())
-                    val routeName = route?.name ?: "Nieznana trasa"
-                    val record = "$currentDateTime | $routeName - $timeString"
+                    if (route != null) {
+                        coroutineScope.launch {
+                            val formatter = java.text.SimpleDateFormat("dd-MM-yyyy HH:mm", java.util.Locale.getDefault())
+                            val currentDateTime = formatter.format(java.util.Date())
 
-                    savedTimes = savedTimes + record
+                            val newRecord = RouteRecord(
+                                routeId = route.id,
+                                routeName = route.name,
+                                timeString = timeString,
+                                dateString = currentDateTime
+                            )
+                            dao.insertRecord(newRecord)
+                            // Informujemy o zapisie, co wyzwoli odświeżenie listy
+                            onRecordSaved()
+                        }
+                    }
                 }) {
                     Icon(Icons.Default.Save, contentDescription = "Zapisz czas", modifier = Modifier.size(32.dp))
                 }
@@ -88,9 +119,10 @@ fun RouteStopwatch(route: Route?, seconds: Int, onSecondsChange: (Int) -> Unit) 
                 Spacer(modifier = Modifier.height(16.dp))
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(text = "Zapisane czasy:", style = MaterialTheme.typography.titleSmall)
+                Text(text = "Ostatnie zapisane czasy dla tej trasy:", style = MaterialTheme.typography.titleSmall)
                 savedTimes.forEach { record ->
-                    Text(text = record, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 4.dp))
+                    val displayText = "${record.dateString} | ${record.timeString}"
+                    Text(text = displayText, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 4.dp))
                 }
             }
         }

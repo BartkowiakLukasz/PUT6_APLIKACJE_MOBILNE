@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.example.myapplication
 
 import android.content.Intent
@@ -6,17 +8,23 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -24,9 +32,16 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.myapplication.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,17 +49,66 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            MyApplicationTheme {
+            val systemInDarkTheme = isSystemInDarkTheme()
+            var isDarkMode by rememberSaveable { mutableStateOf(systemInDarkTheme) }
+
+            MyApplicationTheme(darkTheme = isDarkMode) {
                 val configuration = LocalConfiguration.current
                 val isTablet = configuration.screenWidthDp >= 600
                 val context = LocalContext.current
+                val coroutineScope = rememberCoroutineScope()
+                val dao = remember { AppDatabase.getDatabase(context).routeDao() }
+
+                var refreshTrigger by remember { mutableIntStateOf(0)}
 
                 var selectedRoute by rememberSaveable { mutableStateOf<Route?>(null) }
                 var tabletSeconds by rememberSaveable { mutableIntStateOf(0) }
                 var myRoutes by remember { mutableStateOf<List<Route>>(emptyList()) }
-                var isLoading by remember { mutableStateOf(true) }
 
-                LaunchedEffect(Unit) {
+                var isLoading by remember { mutableStateOf(true) }
+                var errorMessage by remember { mutableStateOf<String?>(null) }
+
+                // Wspólna funkcja zapisu dla FAB (Wyślij)
+                val saveRouteAction = {
+                    selectedRoute?.let { route ->
+                        val minutes = tabletSeconds / 60
+                        val seconds = tabletSeconds % 60
+                        val timeString = "%02d:%02d".format(minutes, seconds)
+
+                        val formatter = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault())
+                        val currentDateTime = formatter.format(Date())
+
+                        val record = RouteRecord(
+                            routeId = route.id,
+                            routeName = route.name,
+                            timeString = timeString,
+                            dateString = currentDateTime
+                        )
+
+                        coroutineScope.launch {
+                            dao.insertRecord(record)
+                            refreshTrigger++
+                            android.widget.Toast.makeText(context, "Zapisano trasę!", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+
+                val lifecycleOwner = LocalLifecycleOwner.current
+                DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_RESUME && errorMessage != null) {
+                            refreshTrigger++
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose {
+                        lifecycleOwner.lifecycle.removeObserver(observer)
+                    }
+                }
+
+                LaunchedEffect(refreshTrigger) {
+                    isLoading = true
+                    errorMessage = null
                     withContext(Dispatchers.IO) {
                         try {
                             val response = URL("https://api.npoint.io/39c7891eb1f75ac4bba0").readText()
@@ -66,31 +130,108 @@ class MainActivity : ComponentActivity() {
                             myRoutes = downloadedRoutes
                             isLoading = false
                         } catch (e: Exception) {
+                            errorMessage = "Nie udało się pobrać tras. Sprawdź połączenie z internetem!"
                             isLoading = false
                         }
                     }
                 }
 
                 Scaffold(
-                    modifier = Modifier.fillMaxSize().statusBarsPadding(), // Dodano padding dla paska statusu zamiast TopBar
+                    modifier = Modifier.fillMaxSize(),
+                    topBar = {
+                        TopAppBar(
+                            title = {
+                                Text(
+                                    if (isTablet && selectedRoute != null)
+                                        selectedRoute?.name ?: "Szczegóły"
+                                    else
+                                        "Trasy"
+                                )
+                            },
+                            navigationIcon = {
+                                if (isTablet && selectedRoute != null) {
+                                    IconButton(onClick = { selectedRoute = null }) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowBack,
+                                            contentDescription = "Wróć"
+                                        )
+                                    }
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = if (isTablet && selectedRoute != null)
+                                    MaterialTheme.colorScheme.secondaryContainer
+                                else
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                titleContentColor = if (isTablet && selectedRoute != null)
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                else
+                                    MaterialTheme.colorScheme.onPrimaryContainer,
+                                navigationIconContentColor = if (isTablet && selectedRoute != null)
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                else
+                                    MaterialTheme.colorScheme.onPrimaryContainer,
+                                actionIconContentColor = if (isTablet && selectedRoute != null)
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                else
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                            ),
+                            modifier = Modifier.shadow(4.dp),
+                            actions = {
+                                IconButton(onClick = { isDarkMode = !isDarkMode }) {
+                                    Icon(
+                                        imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                        contentDescription = "Przełącz tryb"
+                                    )
+                                }
+                            }
+                        )
+                    },
                     floatingActionButton = {
                         if (isTablet && selectedRoute != null) {
-                            FloatingActionButton(onClick = {
-                                val minutes = tabletSeconds / 60
-                                val seconds = tabletSeconds % 60
-                                val timeText = "Mój czas na trasie ${selectedRoute?.name}: %02d:%02d".format(minutes, seconds)
-                                android.widget.Toast.makeText(context, timeText, android.widget.Toast.LENGTH_LONG).show()
-                            }) {
+                            FloatingActionButton(onClick = { saveRouteAction() }) {
                                 Icon(Icons.Default.Send, contentDescription = "Wyślij")
                             }
                         }
                     }
                 ) { innerPadding ->
                     if (isLoading) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier.fillMaxSize().padding(innerPadding),
+                            contentAlignment = Alignment.Center
+                        ) {
                             CircularProgressIndicator()
                         }
-                    } else {
+                    }
+                    else if (errorMessage != null) {
+                        Box(
+                            modifier = Modifier.fillMaxSize().padding(innerPadding),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = "Błąd",
+                                    modifier = Modifier.size(64.dp),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = errorMessage!!,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.error,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 32.dp)
+                                )
+
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Button(onClick = { refreshTrigger++ }) {
+                                    Text("Spróbuj ponownie")
+                                }
+                            }
+                        }
+                    }
+                    else {
                         if (isTablet) {
                             Row(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
                                 RouteList(
@@ -103,7 +244,9 @@ class MainActivity : ComponentActivity() {
                                     route = selectedRoute,
                                     modifier = Modifier.weight(1.5f),
                                     seconds = tabletSeconds,
-                                    onSecondsChange = { tabletSeconds = it }
+                                    onSecondsChange = { tabletSeconds = it },
+                                    refreshTrigger = refreshTrigger,
+                                    onRecordSaved = { refreshTrigger++ }
                                 )
                             }
                         } else {
@@ -113,6 +256,7 @@ class MainActivity : ComponentActivity() {
                                 onRouteSelected = { route ->
                                     val intent = Intent(context, DetailsActivity::class.java)
                                     intent.putExtra("ROUTE_DATA", route)
+                                    intent.putExtra("DARK_MODE", isDarkMode)
                                     context.startActivity(intent)
                                 }
                             )
