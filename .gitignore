@@ -23,3 +23,5 @@ local.properties
 /.idea/misc.xml
 /.idea/runConfigurations.xml
 /.idea/vcs.xml
+/app/src/main/java/wymagania.md
+*.txt

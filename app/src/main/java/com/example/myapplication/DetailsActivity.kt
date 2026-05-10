@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.ui.theme.MyApplicationTheme
@@ -42,8 +43,10 @@ class DetailsActivity : ComponentActivity() {
                 var currentSeconds by rememberSaveable { mutableIntStateOf(0) }
                 var refreshTrigger by remember { mutableIntStateOf(0) }
 
+                val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
+
                 Scaffold(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
                     topBar = {
                         TopAppBar(
                             title = { Text(route?.name ?: "Szczegóły") },
@@ -60,7 +63,8 @@ class DetailsActivity : ComponentActivity() {
                                 titleContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                 navigationIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
                             ),
-                            modifier = Modifier.shadow(4.dp)
+                            modifier = Modifier.shadow(4.dp),
+                            scrollBehavior = scrollBehavior
                         )
                     },
                     floatingActionButton = {

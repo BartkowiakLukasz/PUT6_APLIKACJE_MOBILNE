@@ -21,7 +21,7 @@ fun RouteDetailContent(
     onRecordSaved: () -> Unit = {}
 ) {
     if (route == null) {
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+        Box(modifier = modifier, contentAlignment = androidx.compose.ui.Alignment.Center) {
             Text("Wybierz trasę z listy po lewej", style = MaterialTheme.typography.bodyLarge)
         }
     } else {
