@@ -48,6 +48,28 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.DirectionsBike
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,215 +81,260 @@ class MainActivity : ComponentActivity() {
             var isDarkMode by rememberSaveable { mutableStateOf(systemInDarkTheme) }
 
             MyApplicationTheme(darkTheme = isDarkMode) {
-                val configuration = LocalConfiguration.current
-                val isTablet = configuration.screenWidthDp >= 600
-                val context = LocalContext.current
-                val coroutineScope = rememberCoroutineScope()
-                val dao = remember { AppDatabase.getDatabase(context).routeDao() }
+                var showSplash by rememberSaveable { mutableStateOf(true) }
 
-                var refreshTrigger by remember { mutableIntStateOf(0)}
-                var selectedRoute by rememberSaveable { mutableStateOf<Route?>(null) }
-                var tabletSeconds by rememberSaveable { mutableIntStateOf(0) }
-                var myRoutes by remember { mutableStateOf<List<Route>>(emptyList()) }
+                if (showSplash) {
+                    AnimatedSplashScreen(onSplashFinished = { showSplash = false })
+                } else {
+                    val configuration = LocalConfiguration.current
+                    val isTablet = configuration.screenWidthDp >= 600
+                    val context = LocalContext.current
+                    val coroutineScope = rememberCoroutineScope()
+                    val dao = remember { AppDatabase.getDatabase(context).routeDao() }
 
-                var isLoading by remember { mutableStateOf(true) }
-                var errorMessage by remember { mutableStateOf<String?>(null) }
+                    var refreshTrigger by remember { mutableIntStateOf(0) }
+                    var selectedRoute by rememberSaveable { mutableStateOf<Route?>(null) }
+                    var tabletSeconds by rememberSaveable { mutableIntStateOf(0) }
+                    var myRoutes by remember { mutableStateOf<List<Route>>(emptyList()) }
 
-                val saveRouteAction = {
-                    selectedRoute?.let { route ->
-                        val minutes = tabletSeconds / 60
-                        val seconds = tabletSeconds % 60
-                        val timeString = "%02d:%02d".format(minutes, seconds)
-                        val formatter = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault())
-                        val currentDateTime = formatter.format(Date())
+                    var isLoading by remember { mutableStateOf(true) }
+                    var errorMessage by remember { mutableStateOf<String?>(null) }
 
-                        val record = RouteRecord(
-                            routeId = route.id,
-                            routeName = route.name,
-                            timeString = timeString,
-                            dateString = currentDateTime
-                        )
+                    val saveRouteAction = {
+                        selectedRoute?.let { route ->
+                            val minutes = tabletSeconds / 60
+                            val seconds = tabletSeconds % 60
+                            val timeString = "%02d:%02d".format(minutes, seconds)
+                            val formatter =
+                                SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault())
+                            val currentDateTime = formatter.format(Date())
 
-                        coroutineScope.launch {
-                            dao.insertRecord(record)
-                            refreshTrigger++
-                            android.widget.Toast.makeText(context, "Zapisano trasę!", android.widget.Toast.LENGTH_LONG).show()
+                            val record = RouteRecord(
+                                routeId = route.id,
+                                routeName = route.name,
+                                timeString = timeString,
+                                dateString = currentDateTime
+                            )
+
+                            coroutineScope.launch {
+                                dao.insertRecord(record)
+                                refreshTrigger++
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "Zapisano trasę!",
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                            }
                         }
                     }
-                }
 
-                val lifecycleOwner = LocalLifecycleOwner.current
-                DisposableEffect(lifecycleOwner) {
-                    val observer = LifecycleEventObserver { _, event ->
-                        if (event == Lifecycle.Event.ON_RESUME && errorMessage != null) {
-                            refreshTrigger++
+
+                    val lifecycleOwner = LocalLifecycleOwner.current
+                    DisposableEffect(lifecycleOwner) {
+                        val observer = LifecycleEventObserver { _, event ->
+                            if (event == Lifecycle.Event.ON_RESUME && errorMessage != null) {
+                                refreshTrigger++
+                            }
+                        }
+                        lifecycleOwner.lifecycle.addObserver(observer)
+                        onDispose {
+                            lifecycleOwner.lifecycle.removeObserver(observer)
                         }
                     }
-                    lifecycleOwner.lifecycle.addObserver(observer)
-                    onDispose {
-                        lifecycleOwner.lifecycle.removeObserver(observer)
-                    }
-                }
 
-                LaunchedEffect(refreshTrigger) {
-                    isLoading = true
-                    errorMessage = null
-                    try {
-                        val downloadedRoutes = withContext(Dispatchers.IO) {
-                            val connection = URL("https://api.npoint.io/39c7891eb1f75ac4bba0").openConnection() as java.net.HttpURLConnection
-                            connection.connectTimeout = 5000
-                            connection.readTimeout = 5000
-                            val response = connection.inputStream.bufferedReader().use { it.readText() }
-                            val jsonArray = JSONArray(response)
-                            val list = mutableListOf<Route>()
-                            for (i in 0 until jsonArray.length()) {
-                                val item = jsonArray.getJSONObject(i)
-                                val id = item.getInt("id")
-                                list.add(
-                                    Route(
-                                        id = id,
-                                        name = item.getString("name"),
-                                        description = item.getString("description"),
-                                        type = item.getString("type"),
-                                        imageUrl = item.optString("imageUrl", "https://picsum.photos/seed/$id/400/300")
+                    LaunchedEffect(refreshTrigger) {
+                        isLoading = true
+                        errorMessage = null
+                        try {
+                            val downloadedRoutes = withContext(Dispatchers.IO) {
+                                val connection =
+                                    URL("https://api.npoint.io/39c7891eb1f75ac4bba0").openConnection() as java.net.HttpURLConnection
+                                connection.connectTimeout = 5000
+                                connection.readTimeout = 5000
+                                val response =
+                                    connection.inputStream.bufferedReader().use { it.readText() }
+                                val jsonArray = JSONArray(response)
+                                val list = mutableListOf<Route>()
+                                for (i in 0 until jsonArray.length()) {
+                                    val item = jsonArray.getJSONObject(i)
+                                    val id = item.getInt("id")
+                                    list.add(
+                                        Route(
+                                            id = id,
+                                            name = item.getString("name"),
+                                            description = item.getString("description"),
+                                            type = item.getString("type"),
+                                            imageUrl = item.optString(
+                                                "imageUrl",
+                                                "https://picsum.photos/seed/$id/400/300"
+                                            )
+                                        )
                                     )
+                                }
+                                list
+                            }
+                            myRoutes = downloadedRoutes
+                        } catch (e: Exception) {
+                            errorMessage =
+                                "Nie udało się pobrać tras. Sprawdź połączenie z internetem!"
+                        } finally {
+                            isLoading = false
+                        }
+                    }
+
+                    val scrollBehavior =
+                        TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
+                    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+
+                    ModalNavigationDrawer(
+                        drawerState = drawerState,
+                        drawerContent = {
+                            ModalDrawerSheet {
+                                Text(
+                                    "Menu nawigacyjne",
+                                    modifier = Modifier.padding(16.dp),
+                                    style = MaterialTheme.typography.titleLarge
+                                )
+                                HorizontalDivider()
+                                NavigationDrawerItem(
+                                    label = { Text("O aplikacji") },
+                                    selected = false,
+                                    onClick = {
+                                        coroutineScope.launch { drawerState.close() }
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            "Aplikacja Trasy Rowerowe v1.0",
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    },
+                                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                                )
+                                NavigationDrawerItem(
+                                    label = { Text("Odśwież trasy") },
+                                    selected = false,
+                                    onClick = {
+                                        coroutineScope.launch { drawerState.close() }
+                                        refreshTrigger++
+                                    },
+                                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                                 )
                             }
-                            list
                         }
-                        myRoutes = downloadedRoutes
-                    } catch (e: Exception) {
-                        errorMessage = "Nie udało się pobrać tras. Sprawdź połączenie z internetem!"
-                    } finally {
-                        isLoading = false
-                    }
-                }
-
-                val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
-                val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-
-                ModalNavigationDrawer(
-                    drawerState = drawerState,
-                    drawerContent = {
-                        ModalDrawerSheet {
-                            Text("Menu nawigacyjne", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleLarge)
-                            HorizontalDivider()
-                            NavigationDrawerItem(
-                                label = { Text("O aplikacji") },
-                                selected = false,
-                                onClick = {
-                                    coroutineScope.launch { drawerState.close() }
-                                    android.widget.Toast.makeText(context, "Aplikacja Trasy Rowerowe v1.0", android.widget.Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                            )
-                            NavigationDrawerItem(
-                                label = { Text("Odśwież trasy") },
-                                selected = false,
-                                onClick = {
-                                    coroutineScope.launch { drawerState.close() }
-                                    refreshTrigger++
-                                },
-                                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                            )
-                        }
-                    }
-                ) {
-                    Scaffold(
-                    modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
-                    topBar = {
-                        TopAppBar(
-                            title = {
-                                Text(
-                                    if (isTablet && selectedRoute != null)
-                                        selectedRoute?.name ?: "Szczegóły"
-                                    else
-                                        "Trasy Rowerowe"
+                    ) {
+                        Scaffold(
+                            modifier = Modifier.fillMaxSize()
+                                .nestedScroll(scrollBehavior.nestedScrollConnection),
+                            topBar = {
+                                TopAppBar(
+                                    title = {
+                                        Text(
+                                            if (isTablet && selectedRoute != null)
+                                                selectedRoute?.name ?: "Szczegóły"
+                                            else
+                                                "Trasy Rowerowe"
+                                        )
+                                    },
+                                    navigationIcon = {
+                                        if (isTablet && selectedRoute != null) {
+                                            IconButton(onClick = { selectedRoute = null }) {
+                                                Icon(
+                                                    Icons.Default.ArrowBack,
+                                                    contentDescription = "Wróć"
+                                                )
+                                            }
+                                        } else {
+                                            IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
+                                                Icon(
+                                                    Icons.Default.Menu,
+                                                    contentDescription = "Menu"
+                                                )
+                                            }
+                                        }
+                                    },
+                                    colors = TopAppBarDefaults.topAppBarColors(
+                                        containerColor = if (isTablet && selectedRoute != null)
+                                            MaterialTheme.colorScheme.secondaryContainer
+                                        else
+                                            MaterialTheme.colorScheme.primaryContainer,
+                                        titleContentColor = if (isTablet && selectedRoute != null)
+                                            MaterialTheme.colorScheme.onSecondaryContainer
+                                        else
+                                            MaterialTheme.colorScheme.onPrimaryContainer,
+                                        navigationIconContentColor = if (isTablet && selectedRoute != null)
+                                            MaterialTheme.colorScheme.onSecondaryContainer
+                                        else
+                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                    ),
+                                    modifier = Modifier.shadow(4.dp),
+                                    scrollBehavior = scrollBehavior,
+                                    actions = {
+                                        IconButton(onClick = { isDarkMode = !isDarkMode }) {
+                                            Icon(
+                                                imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                                contentDescription = "Przełącz tryb"
+                                            )
+                                        }
+                                    }
                                 )
                             },
-                            navigationIcon = {
+                            floatingActionButton = {
                                 if (isTablet && selectedRoute != null) {
-                                    IconButton(onClick = { selectedRoute = null }) {
-                                        Icon(Icons.Default.ArrowBack, contentDescription = "Wróć")
+                                    FloatingActionButton(onClick = { saveRouteAction() }) {
+                                        Icon(Icons.Default.Send, contentDescription = "Wyślij")
+                                    }
+                                }
+                            }
+                        ) { innerPadding ->
+                            if (isLoading) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize().padding(innerPadding),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            } else if (errorMessage != null) {
+                                ErrorView(
+                                    errorMessage!!,
+                                    onRetry = { refreshTrigger++ },
+                                    modifier = Modifier.padding(innerPadding)
+                                )
+                            } else {
+                                if (isTablet) {
+                                    Row(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+                                        MainTabsScreen(
+                                            routes = myRoutes,
+                                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                                            onRouteSelected = { selectedRoute = it }
+                                        )
+                                        VerticalDivider(
+                                            modifier = Modifier.width(1.dp),
+                                            color = MaterialTheme.colorScheme.outlineVariant
+                                        )
+                                        RouteDetailContent(
+                                            route = selectedRoute,
+                                            modifier = Modifier.weight(1.5f).fillMaxHeight(),
+                                            seconds = tabletSeconds,
+                                            onSecondsChange = { tabletSeconds = it },
+                                            refreshTrigger = refreshTrigger,
+                                            onRecordSaved = { refreshTrigger++ }
+                                        )
                                     }
                                 } else {
-                                    IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
-                                        Icon(Icons.Default.Menu, contentDescription = "Menu")
-                                    }
-                                }
-                            },
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = if (isTablet && selectedRoute != null)
-                                    MaterialTheme.colorScheme.secondaryContainer
-                                else
-                                    MaterialTheme.colorScheme.primaryContainer,
-                                titleContentColor = if (isTablet && selectedRoute != null)
-                                    MaterialTheme.colorScheme.onSecondaryContainer
-                                else
-                                    MaterialTheme.colorScheme.onPrimaryContainer,
-                                navigationIconContentColor = if (isTablet && selectedRoute != null)
-                                    MaterialTheme.colorScheme.onSecondaryContainer
-                                else
-                                    MaterialTheme.colorScheme.onPrimaryContainer
-                            ),
-                            modifier = Modifier.shadow(4.dp),
-                            scrollBehavior = scrollBehavior,
-                            actions = {
-                                IconButton(onClick = { isDarkMode = !isDarkMode }) {
-                                    Icon(
-                                        imageVector = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
-                                        contentDescription = "Przełącz tryb"
+                                    MainTabsScreen(
+                                        routes = myRoutes,
+                                        modifier = Modifier.padding(innerPadding),
+                                        onRouteSelected = { route ->
+                                            val intent =
+                                                Intent(context, DetailsActivity::class.java)
+                                            intent.putExtra("ROUTE_DATA", route)
+                                            intent.putExtra("DARK_MODE", isDarkMode)
+                                            context.startActivity(intent)
+                                        }
                                     )
                                 }
                             }
-                        )
-                    },
-                    floatingActionButton = {
-                        if (isTablet && selectedRoute != null) {
-                            FloatingActionButton(onClick = { saveRouteAction() }) {
-                                Icon(Icons.Default.Send, contentDescription = "Wyślij")
-                            }
                         }
                     }
-                ) { innerPadding ->
-                    if (isLoading) {
-                        Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator()
-                        }
-                    } else if (errorMessage != null) {
-                        ErrorView(errorMessage!!, onRetry = { refreshTrigger++ }, modifier = Modifier.padding(innerPadding))
-                    } else {
-                        if (isTablet) {
-                            Row(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-                                MainTabsScreen(
-                                    routes = myRoutes,
-                                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                                    onRouteSelected = { selectedRoute = it }
-                                )
-                                VerticalDivider(modifier = Modifier.width(1.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                                RouteDetailContent(
-                                    route = selectedRoute,
-                                    modifier = Modifier.weight(1.5f).fillMaxHeight(),
-                                    seconds = tabletSeconds,
-                                    onSecondsChange = { tabletSeconds = it },
-                                    refreshTrigger = refreshTrigger,
-                                    onRecordSaved = { refreshTrigger++ }
-                                )
-                            }
-                        } else {
-                            MainTabsScreen(
-                                routes = myRoutes,
-                                modifier = Modifier.padding(innerPadding),
-                                onRouteSelected = { route ->
-                                    val intent = Intent(context, DetailsActivity::class.java)
-                                    intent.putExtra("ROUTE_DATA", route)
-                                    intent.putExtra("DARK_MODE", isDarkMode)
-                                    context.startActivity(intent)
-                                }
-                            )
-                        }
-                    }
-                }
                 }
             }
         }
@@ -411,5 +478,103 @@ fun StartTabContent() {
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
+    }
+}
+
+@Composable
+fun AnimatedSplashScreen(onSplashFinished: () -> Unit) {
+    val context = LocalContext.current
+
+    val scale = remember { Animatable(0f) }
+    val translateY = remember { Animatable(300f) }
+    val alpha = remember { Animatable(0f) }
+
+    var sensorTiltX by remember { mutableFloatStateOf(0f) }
+
+    DisposableEffect(Unit) {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                event?.let {
+                    val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
+                    val rotation = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                        context.display?.rotation ?: android.view.Surface.ROTATION_0
+                    } else {
+                        @Suppress("DEPRECATION")
+                        windowManager.defaultDisplay.rotation
+                    }
+
+                    val rawValue = if (rotation == android.view.Surface.ROTATION_90 || rotation == android.view.Surface.ROTATION_270) {
+                        it.values[1]
+                    } else {
+                        -it.values[0]
+                    }
+
+                    sensorTiltX = rawValue * 20f
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        sensorManager.registerListener(listener, accelerometer, SensorManager.SENSOR_DELAY_UI)
+
+        onDispose {
+            sensorManager.unregisterListener(listener)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        launch {
+            scale.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessLow
+                )
+            )
+        }
+        launch {
+            translateY.animateTo(
+                targetValue = 0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessLow
+                )
+            )
+        }
+        launch {
+            alpha.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 1000)
+            )
+        }
+
+        delay(2500)
+        onSplashFinished()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.DirectionsBike,
+            contentDescription = "Rower Logo",
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier
+                .size(120.dp)
+                .graphicsLayer {
+                    scaleX = scale.value
+                    scaleY = scale.value
+                    this.translationY = translateY.value
+
+                    this.translationX = sensorTiltX
+                    this.alpha = alpha.value
+                }
+        )
     }
 }
